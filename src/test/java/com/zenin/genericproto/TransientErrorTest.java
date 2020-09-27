@@ -1,37 +1,49 @@
 package com.zenin.genericproto;
 
 import com.google.protobuf.Message;
+import com.zenin.genericproto.config.KafkaConfig;
+import com.zenin.genericproto.service.ReportingWarehouseSender;
 import com.zenin.genericproto.test.KafkaContainerSBAware;
 import com.zenin.genericproto.test.MockRegistryBeans;
 import com.zenin.models.EnvironmentReadingsOuterClass.*;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.junit.jupiter.api.Test;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.test.utils.ContainerTestUtils;
+import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.IntStream;
 
 import static com.google.protobuf.util.Timestamps.fromMillis;
 import static java.lang.System.currentTimeMillis;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 
 @SpringBootTest
 @Testcontainers
 @Slf4j
-public class GenericProtoApplicationTest {
-  public static final int NUM_PARTITIONS = 2;
+@ActiveProfiles("test")
+public class TransientErrorTest {
+  public static final int NUM_PARTITIONS = 3;
   public static final String TOPIC = "prod.readings";
   @Container public static KafkaContainer kafka = new KafkaContainerSBAware();
 
@@ -44,8 +56,10 @@ public class GenericProtoApplicationTest {
     }
   }
 
-  @Autowired private KafkaListenerEndpointRegistry registry;
-  @Autowired private KafkaTemplate<String, Message> producer;
+  @Autowired KafkaListenerEndpointRegistry registry;
+  @Autowired KafkaTemplate<String, Message> producer;
+  @MockBean ReportingWarehouseSender mockedSender;
+  @Autowired KafkaConfig kafkaConfig;
 
   @Test
   void contextLoads() {
@@ -53,21 +67,69 @@ public class GenericProtoApplicationTest {
   }
 
   @Test
-  void sendDummyEvents() {
+  void sendDummyEvent_Expect3TransientErrors_ProcessEventSuccess() {
     waitForAssignment();
-    IntStream.range(0, 50).forEach(this::sendDummyEvent);
+
+    // setup stubs
+    final int NUM_ERRORS = 3;
+    final var NUM_MSGS = 3;
+    final CountDownLatch successLatch = makeSenderFailTransient(NUM_ERRORS, mockedSender, NUM_MSGS);
+
+    IntStream.range(0, NUM_MSGS).forEach(this::sendSomeDummyEvent);
+
+    assertTrue(areTransientErrorsResolved(NUM_ERRORS, successLatch));
   }
 
-  private void sendDummyEvent(int i) {
+  private boolean areTransientErrorsResolved(
+      int numOfTransientErrors, CountDownLatch successLatch) {
     try {
-      producer.send(TOPIC, getEvent(i)).get();
-      Thread.sleep(1000);
+      final long GRACE_TIME_MILLIS = 1000L;
+      return successLatch.await(
+          kafkaConfig.getRetryIntervalMillis() * numOfTransientErrors + GRACE_TIME_MILLIS,
+          MILLISECONDS);
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private CountDownLatch makeSenderFailTransient(
+      final int numTransientErrorsPerThread,
+      ReportingWarehouseSender mockSender,
+      int expectedNumberOfMessages) {
+    var successMsgLatch = new CountDownLatch(expectedNumberOfMessages);
+    doAnswer(
+            new Answer<Void>() {
+              ThreadLocal<Integer> retryCount = ThreadLocal.withInitial(() -> 0);
+
+              @Override
+              public Void answer(InvocationOnMock invocationOnMock) {
+                retryCount.set(retryCount.get() + 1);
+                if (retryCount.get() <= numTransientErrorsPerThread) {
+                  throw new RuntimeException("HTTP 503 SERVICE_UNAVAILABLE");
+                } else {
+                  log.info(
+                      "Success in sending to warehouse: [{}]",
+                      invocationOnMock.getArgument(0).toString());
+                  successMsgLatch.countDown();
+                  return null;
+                }
+              }
+            })
+        .when(mockSender)
+        .sendToWarehouse(any());
+
+    return successMsgLatch;
+  }
+
+  private void sendSomeDummyEvent(int i) {
+    try {
+      producer.send(TOPIC, i % NUM_PARTITIONS, null, getSomeEvent(i)).get();
     } catch (InterruptedException | ExecutionException e) {
       throw new RuntimeException(e);
     }
   }
 
-  private Message getEvent(int i) {
+  private Message getSomeEvent(int i) {
     final var reading =
         EnvironmentReadings.newBuilder()
             .setReadingId(generateID())

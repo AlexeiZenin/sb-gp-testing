@@ -1,0 +1,9 @@
+spring:
+  kafka:
+    listener:
+      log-container-config: true
+      concurrency: 3
+
+zenin:
+  kafka:
+    retry-interval-millis: 1000

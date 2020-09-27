@@ -3,7 +3,6 @@ package com.zenin.genericproto.service.enhancers;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import com.google.protobuf.DynamicMessage;
-import com.google.protobuf.Timestamp;
 
 import java.util.Set;
 
