@@ -6,7 +6,7 @@ shown in this example. The codebase is a direct extension of the repo linked.
 ## Overview
 
 The repository seeks to demonstrate the usage of the 
-[error handling strategies](https://docs.spring.io/spring-kafka/reference/html/#annotation-error-handling) 
+[error handling strategies](https://docs.spring.io/spring-kafka/reference/html/#error-handlers) 
 that Spring Kafka exposes to the developer and how to test your configurations in a concurrent environment.
 
 We leverage the standard exposed configuration from the Spring Kafka library to vertically scale our
@@ -25,7 +25,7 @@ The following commands will run a test which will:
 
 -  Setup a Kafka docker container for the test
 -  Configure Spring Boot to instantiate _**X**_ Kafka Consumers managed by Spring Kafka 
-(_**X**_ separate threads each invoking `poll()`)
+(_**X**_ separate threads each invoking `poll()` on _**X**_ Kafka Consumer instances)
 -  Setup our `ReportingWarehouseSender` to fail transiently several times with a fake `HTTP 503` exception.
 -  Once the configured number of transient errors are reached, successfully process the record by throwing no
 exceptions
