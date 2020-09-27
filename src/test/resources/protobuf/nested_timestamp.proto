@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package com.zenin.models;
+
+option java_package = "com.zenin.models";
+
+import "google/protobuf/timestamp.proto";
+
+message NestedTimestamp {
+  google.protobuf.Timestamp time_of_reading = 2;
+
+  oneof readings {
+    TempartureReading temperature_reading = 8;
+    PrecipitationReading precipitation_reading = 9;
+    PHReading ph_reading = 10;
+  }
+
+  Nested nested = 11;
+}
+
+message Nested {
+  google.protobuf.Timestamp nested_time = 2;
+}
+
+message TempartureReading {
+  double temperature_in_celsius = 1;
+  google.protobuf.Timestamp nested_time = 2;
+}
+
+message PrecipitationReading {
+  uint32 delta_in_millimetres = 1;
+}
+
+message PHReading {
+  uint32 ph_value = 1;
+  PHType ph_type = 2;
+}
+
+enum PHType {
+  PHTYPE_UNSPECIFIED = 0;
+  PHTYPE_NEUTRAL = 1;
+  PHTYPE_ACIDIC = 2;
+  PHTYPE_BASIC = 3;
+}
+
+

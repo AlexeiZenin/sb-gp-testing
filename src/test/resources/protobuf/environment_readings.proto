@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package com.zenin.models;
+
+option java_package = "com.zenin.models";
+option go_package = "zenin.com/models";
+
+import "google/protobuf/timestamp.proto";
+
+message EnvironmentReadings {
+  string reading_id = 1;
+  google.protobuf.Timestamp time_of_reading = 2;
+  string device_id = 4;
+  double latitude = 5;
+  double longitude = 6;
+  double elevation_in_meters = 7;
+
+  oneof readings {
+    TempartureReading temperature_reading = 8;
+    PrecipitationReading precipitation_reading = 9;
+    PHReading ph_reading = 10;
+  }
+}
+
+message TempartureReading {
+  double temperature_in_celsius = 1;
+}
+
+message PrecipitationReading {
+  uint32 delta_in_millimetres = 1;
+}
+
+message PHReading {
+  uint32 ph_value = 1;
+  PHType ph_type = 2;
+}
+
+enum PHType {
+  PHTYPE_UNSPECIFIED = 0;
+  PHTYPE_NEUTRAL = 1;
+  PHTYPE_ACIDIC = 2;
+  PHTYPE_BASIC = 3;
+}
+
+
