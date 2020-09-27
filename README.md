@@ -19,6 +19,10 @@ spring:
       concurrency: 3
 ```
 
+The subsequent system that is materialised is shown below.
+
+![](docs/concurrency-kafka.png)
+
 ### Try it out (requires Docker)
 
 The following commands will run a test which will:
