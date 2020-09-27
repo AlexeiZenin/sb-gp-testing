@@ -25,7 +25,7 @@ The following commands will run a test which will:
 
 -  Setup a Kafka docker container for the test
 -  Configure Spring Boot to instantiate _**X**_ Kafka Consumers managed by Spring Kafka 
-(_**X**_ separate threads each invoking `poll()` on _**X**_ Kafka Consumer instances)
+(_**X**_ threads each separately invoking `poll()` on their Kafka Consumer instance)
 -  Setup our `ReportingWarehouseSender` to fail transiently several times with a fake `HTTP 503` exception.
 -  Once the configured number of transient errors are reached, successfully process the record by throwing no
 exceptions
