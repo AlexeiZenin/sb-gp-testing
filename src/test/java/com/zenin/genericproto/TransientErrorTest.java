@@ -67,7 +67,7 @@ public class TransientErrorTest {
   }
 
   @Test
-  void sendDummyEvent_Expect3TransientErrors_ProcessEventSuccess() {
+  void sendDummyEvents_Expect3TransientErrors_ProcessEventSuccess() {
     waitForAssignment();
 
     // setup stubs
