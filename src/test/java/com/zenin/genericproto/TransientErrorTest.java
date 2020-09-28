@@ -8,10 +8,12 @@ import com.zenin.genericproto.test.MockRegistryBeans;
 import com.zenin.models.EnvironmentReadingsOuterClass.*;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.admin.NewTopic;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Bean;
@@ -60,6 +62,7 @@ public class TransientErrorTest {
   @Autowired KafkaTemplate<String, Message> producer;
   @MockBean ReportingWarehouseSender mockedSender;
   @Autowired KafkaConfig kafkaConfig;
+  @Autowired KafkaProperties kafkaProperties;
 
   @Test
   void contextLoads() {
@@ -73,39 +76,63 @@ public class TransientErrorTest {
     // setup stubs
     final int NUM_ERRORS = 3;
     final var NUM_MSGS = 3;
-    final CountDownLatch successLatch = makeSenderFailTransient(NUM_ERRORS, mockedSender, NUM_MSGS);
+    final CountDownLatch successLatch =
+        makeSenderThrowException(
+            NUM_ERRORS,
+            mockedSender,
+            NUM_MSGS,
+            new RuntimeException("HTTP 503 SERVICE_UNAVAILABLE"));
 
     IntStream.range(0, NUM_MSGS).forEach(this::sendSomeDummyEvent);
 
-    assertTrue(areTransientErrorsResolved(NUM_ERRORS, successLatch));
+    assertTrue(isLatchDone(NUM_ERRORS, successLatch));
   }
 
-  private boolean areTransientErrorsResolved(
-      int numOfTransientErrors, CountDownLatch successLatch) {
+  /** Bonus :), check skip logic works if exception non-retriable */
+  @Test
+  @Disabled
+  void sendDummyEvents_ExpectFatalError_SkipEvent() {
+    waitForAssignment();
+
+    // setup stubs
+    final int NUM_ERRORS = 1;
+    final var NUM_MSGS_TOTAL = 5;
+    final var NUM_MSGS_PROCESSED =
+        NUM_MSGS_TOTAL - (NUM_ERRORS * kafkaProperties.getListener().getConcurrency());
+    final CountDownLatch successLatch =
+        makeSenderThrowException(
+            NUM_ERRORS, mockedSender, NUM_MSGS_PROCESSED, new ClassCastException(""));
+
+    IntStream.range(0, NUM_MSGS_TOTAL).forEach(this::sendSomeDummyEvent);
+
+    assertTrue(isLatchDone(0, successLatch));
+  }
+
+  private boolean isLatchDone(int numOfRetries, CountDownLatch successLatch) {
     try {
       final long GRACE_TIME_MILLIS = 1000L;
       return successLatch.await(
-          kafkaConfig.getRetryIntervalMillis() * numOfTransientErrors + GRACE_TIME_MILLIS,
-          MILLISECONDS);
+          kafkaConfig.getRetryIntervalMillis() * numOfRetries + GRACE_TIME_MILLIS, MILLISECONDS);
     } catch (InterruptedException e) {
       throw new RuntimeException(e);
     }
   }
 
-  private CountDownLatch makeSenderFailTransient(
-      final int numTransientErrorsPerThread,
+  private CountDownLatch makeSenderThrowException(
+      final int numThrowsPerThread,
       ReportingWarehouseSender mockSender,
-      int expectedNumberOfMessages) {
+      int expectedNumberOfMessages,
+      Exception exceptionToThrow) {
     var successMsgLatch = new CountDownLatch(expectedNumberOfMessages);
     doAnswer(
             new Answer<Void>() {
               ThreadLocal<Integer> retryCount = ThreadLocal.withInitial(() -> 0);
 
               @Override
-              public Void answer(InvocationOnMock invocationOnMock) {
+              public Void answer(InvocationOnMock invocationOnMock) throws Exception {
                 retryCount.set(retryCount.get() + 1);
-                if (retryCount.get() <= numTransientErrorsPerThread) {
-                  throw new RuntimeException("HTTP 503 SERVICE_UNAVAILABLE");
+                if (retryCount.get() <= numThrowsPerThread) {
+                  throw exceptionToThrow;
                 } else {
                   log.info(
                       "Success in sending to warehouse: [{}]",
