@@ -126,12 +126,12 @@ public class TransientErrorTest {
     var successMsgLatch = new CountDownLatch(expectedNumberOfMessages);
     doAnswer(
             new Answer<Void>() {
-              ThreadLocal<Integer> retryCount = ThreadLocal.withInitial(() -> 0);
+              ThreadLocal<Integer> throwCount = ThreadLocal.withInitial(() -> 0);
 
               @Override
               public Void answer(InvocationOnMock invocationOnMock) throws Exception {
-                retryCount.set(retryCount.get() + 1);
-                if (retryCount.get() <= numThrowsPerThread) {
+                throwCount.set(throwCount.get() + 1);
+                if (throwCount.get() <= numThrowsPerThread) {
                   throw exceptionToThrow;
                 } else {
                   log.info(
